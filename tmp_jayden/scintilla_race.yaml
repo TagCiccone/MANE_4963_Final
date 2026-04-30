@@ -1,0 +1,224 @@
+coGHeight: 0.417
+cogPos:
+- 128.741
+- 127.698
+- 0.419
+cogPosDynamic:
+- 128.748
+- 127.698
+- 0.415
+cogPosDynamicRel:
+- 0.747
+- -0.301
+- 0.307
+cogToFrontAxle: 1.508
+cogToLeftWheelAxle: 0.933
+cogToRearAxle: 1.145
+cogToRightWheelAxle: 0.93
+distFR: 2.653
+distLR: 1.859
+inertia:
+  xx: 468.847
+  xy: 0.194
+  xz: -6.39
+  yy: 1758.342
+  yz: 0.302
+  zz: 2063.077
+totalMass: 1224.87
+vectorForward:
+- -1.0
+- 0.0
+- -0.004
+vectorLeft:
+- -0.0
+- -1.0
+- -0.0
+vectorUp:
+- -0.004
+- -0.0
+- 1.0
+vehHeight: 1.237
+vehLength: 4.59
+vehWidth: 2.232
+wheel_fl:
+  inertia: 0.999
+  mass: 15.36
+  pos:
+  - -1.508
+  - -0.928
+  - -0.077
+  radius: 0.34
+  width: 0.3
+wheel_fr:
+  inertia: 0.999
+  mass: 15.36
+  pos:
+  - -1.507
+  - 0.931
+  - -0.077
+  radius: 0.34
+  width: 0.3
+wheel_rl:
+  inertia: 0.999
+  mass: 15.36
+  pos:
+  - 1.146
+  - -0.933
+  - -0.067
+  radius: 0.35
+  width: 0.325
+wheel_rr:
+  inertia: 0.999
+  mass: 15.36
+  pos:
+  - 1.146
+  - 0.935
+  - -0.067
+  radius: 0.35
+  width: 0.325
+engine:
+  fuelCapacity: 80.0
+  fuelVolume: 79.89
+  idleRPM: 1270.0
+  maxRPM: 9000.0
+  superchargerBoostMax: -1.0
+  turboBoostMax: -1.0
+gearbox:
+  -1.0:
+    index: -1
+    mode_index: 0.0
+    gear_ratio: -2.85
+    mode: ''
+    indexCmd: -1
+  0.0:
+    index: 0
+    mode_index: 0.0
+    gear_ratio: 0.0
+    mode: ''
+    indexCmd: 0
+  1.0:
+    index: 1
+    mode_index: 0.0
+    gear_ratio: 2.99
+    mode: ''
+    indexCmd: 1
+  2.0:
+    index: 2
+    mode_index: 0.0
+    gear_ratio: 2.23
+    mode: ''
+    indexCmd: 2
+  3.0:
+    index: 3
+    mode_index: 0.0
+    gear_ratio: 1.7600000000000002
+    mode: ''
+    indexCmd: 3
+  4.0:
+    index: 4
+    mode_index: 0.0
+    gear_ratio: 1.47
+    mode: ''
+    indexCmd: 4
+  5.0:
+    index: 5
+    mode_index: 0.0
+    gear_ratio: 1.23
+    mode: ''
+    indexCmd: 5
+  6.0:
+    index: 6
+    mode_index: 0.0
+    gear_ratio: 0.9600000000000001
+    mode: ''
+    indexCmd: 6
+powertrain:
+  mainEngine:
+    type: combustionEngine
+    clutch:
+      type: frictionClutch
+      gearRatio: 1.0
+      gearbox:
+        type: sequentialGearbox
+        gearRatio: 0.96
+        gearRatios:
+          -1.0: -2.85
+          0.0: 0.0
+          1.0: 2.99
+          2.0: 2.23
+          3.0: 1.76
+          4.0: 1.47
+          5.0: 1.23
+          6.0: 0.96
+        transfercase:
+          type: shaft
+          gearRatio: 1.0
+          availableModes:
+          - connected
+          differential_R:
+            type: differential
+            gearRatio: 3.72
+            availableModes:
+            - lsd
+            diffTorqueSplit: 0.5
+            wheelaxleRL:
+              type: shaft
+              gearRatio: 1.0
+              availableModes:
+              - connected
+              spindleRL:
+                type: shaft
+                gearRatio: 1.0
+                availableModes:
+                - connected
+            wheelaxleRR:
+              type: shaft
+              gearRatio: 1.0
+              availableModes:
+              - connected
+              spindleRR:
+                type: shaft
+                gearRatio: 1.0
+                availableModes:
+                - connected
+  spindleFL:
+    type: shaft
+    gearRatio: 1.0
+    availableModes:
+    - connected
+  spindleFR:
+    type: shaft
+    gearRatio: 1.0
+    availableModes:
+    - connected
+controllers:
+  CMU: drivingDynamics/CMU
+  aeroControl: drivingDynamics/supervisors/components/aeroControl
+  awdControl: drivingDynamics/supervisors/components/awdControl
+  brakeControl: drivingDynamics/supervisors/components/brakeControl
+  diffControl: drivingDynamics/supervisors/components/diffControl
+  door_L_coupler: advancedCouplerControl
+  door_R_coupler: advancedCouplerControl
+  driveModes: driveModes
+  drivingDynamics/sensors/sensorHub: drivingDynamics/sensors/sensorHub
+  drivingDynamics/supervisors/slipProviders/virtualSpeedSlip: drivingDynamics/supervisors/slipProviders/virtualSpeedSlip
+  drivingDynamics/supervisors/yawProviders/STMEstimate: drivingDynamics/supervisors/yawProviders/STMEstimate
+  gauge: gauges/genericGauges
+  gauges/customModules/accelerationData: gauges/customModules/accelerationData
+  gauges/customModules/combustionEngineData: gauges/customModules/combustionEngineData
+  gauges/customModules/electricMotorData: gauges/customModules/electricMotorData
+  gauges/customModules/environmentData: gauges/customModules/environmentData
+  gauges/customModules/tireData: gauges/customModules/tireData
+  gtState0: xlab/gtState
+  motorTorqueControl: drivingDynamics/supervisors/components/motorTorqueControl
+  scintilla_navi: beamNavigator
+  sensors: drivingDynamics/sensors/virtualSensors
+  sequentialLever: propAnimation/sequentialLever
+  shiftLights: shiftLights
+  tailgateCatchCoupler: advancedCouplerControl
+  tailgateLatchCoupler: advancedCouplerControl
+  tractionControl: drivingDynamics/supervisors/tractionControl
+  twoStepLaunch: twoStepLaunch
+  vehicleController: vehicleController/vehicleController
+  vehicleData: drivingDynamics/sensors/vehicleData
+  yawControl: drivingDynamics/supervisors/yawControl
