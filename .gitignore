@@ -219,3 +219,7 @@ __marimo__/
 
 # Mac
 .DS_STORE
+
+install
+log
+.vscode
