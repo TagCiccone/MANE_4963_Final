@@ -1,0 +1,43 @@
+{
+    "name": "ROS 2 Development Container",
+    "privileged": true,
+    "remoteUser": "ROS_USER",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "USERNAME": "ROS_USER"
+        }
+    },
+    "workspaceFolder": "/home/ros2_ws",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/home/ros2_ws,type=bind",
+    "customizations": {
+        "vscode": {
+            "extensions":[
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-themes",
+                "twxs.cmake",
+                "donjayamanne.python-extension-pack",
+                "eamodio.gitlens",
+                "Ranch-Hand-Robotics.rde-pack"
+            ]
+        }
+    },
+    "containerEnv": {
+        "DISPLAY": "unix:0",
+        "ROS_AUTOMATIC_DISCOVERY_RANGE": "LOCALHOST",
+        "ROS_DOMAIN_ID": "42",
+        "BEAMNG_MOD_DIR": "/mnt/bng_mods"
+    },
+    "runArgs": [
+        "--net=host",
+        "--pid=host",
+        "--ipc=host",
+        "-e", "DISPLAY=${env:DISPLAY}"
+    ],
+    "mounts": [
+       "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+       "source=/dev/dri,target=/dev/dri,type=bind,consistency=cached",
+       "source=/mnt/c/Users/${localEnv:WINDOWS_USERNAME}/AppData/Local/BeamNG/BeamNG.tech/current/mods,target=/mnt/bng_mods,type=bind,consistency=cached"
+    ],
+    "postCreateCommand": ". .devcontainer/setup.bash && sudo chown -R $(whoami) /home/ros2_ws/ && sudo chmod a+rw . -R"
+}
