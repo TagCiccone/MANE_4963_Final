@@ -1,5 +1,9 @@
 cd /home/ros2_ws
 
+if [ ! -d ".venv" ]; then 
+    python3 -m venv .venv
+fi
+
 mkdir -p lib
 cd lib
 
