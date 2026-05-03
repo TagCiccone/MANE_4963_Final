@@ -1,0 +1,599 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage[margin=1in]{geometry}
+\usepackage{subfig}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{geometry}
+
+\newcommand{\red}[1]{{\color{red}#1}}
+
+\title{High Performance Autonomous Car Project}
+\author{Tag Ciccone, Damsara Jayarathne, Jayden Smith, Carlo Serraino}
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Autonomous vehicles need complex algorithms in order to navigate the environment safely and efficiently. Candidates for prospective algorithms need to be able to predict where the vehicle may be given specific control inputs (steering angle and throttle in this case), generate a trajectory that the vehicle can reasonably follow, and produce control inputs such that the vehicle can stay on the generated trajectory within a certain bound.
+
+One method used to control a vehicle is Model Predictive Control (MPC). MPC uses a model for the vehicle as well as user-defined constraints to find the optimal control inputs for a given prediction horizon. High performance is easily achievable with a well-founded model and constraints.
+
+This project explores the use of models (both data-driven and analytical) for prediction and trajectory generation, as well as MPC for control. 
+
+\section{Vehicle Selection}
+An internal combustion engine (ICE) vehicle with rear wheel drive, either manual or sequential transmission, and with a low center of gravity was needed to match the project's modeling assumptions
+
+Vehicle Choice: Civetta Scintilla Race with Sequential Drive
+ 
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.5\linewidth]{civetta.png}
+    \caption{Rendering of the Civetta Scintilla}
+    \label{fig:civetta}
+\end{figure}
+
+This car meets all the requirements with the added bonus of high performance in general.
+
+\section{Vehicle, Tire, and Torque Modeling}
+
+\subsection{Vehicle Dynamics Model}
+
+The vehicle is modeled using a nonlinear bicycle model with Fiala tire dynamics. This model captures the coupled longitudinal and lateral behavior of the vehicle while remaining computationally tractable for real-time control.
+
+The vehicle dynamics are expressed in the body-fixed frame using the following states:
+\begin{equation}
+\mathbf{x} =
+\begin{bmatrix}
+r & V & \beta & \omega_r
+\end{bmatrix}^T
+\end{equation}
+where:
+\begin{itemize}
+    \item $r$ is the yaw rate,
+    \item $V$ is the vehicle speed,
+    \item $\beta$ is the sideslip angle at the center of mass,
+    \item $\omega_r$ is the rear wheel speed.
+\end{itemize}
+
+The control inputs are:
+\begin{equation}
+\mathbf{u} =
+\begin{bmatrix}
+\delta & T_r
+\end{bmatrix}^T
+\end{equation}
+where $\delta$ is the front road wheel steering angle and $T_r$ is the rear wheel torque.
+
+The dynamics are governed by Newton's second law applied to the bicycle model:
+
+\begin{align}
+I_{zz} \dot{r} &= a \cos\delta \, F_{yf} - b \, F_{yr}, \\
+m(\dot{v}_x - v_y r) &= -\sin\delta \, F_{yf} + F_{xr}, \\
+m(\dot{v}_y + v_x r) &= \cos\delta \, F_{yf} + F_{yr},
+\end{align}
+
+where
+\begin{align*}
+I_{zz} &: \text{yaw moment of inertia about the vehicle's vertical axis (body frame)} \\
+a &: \text{distance from center of mass to the front axle} \\
+b &: \text{distance from center of mass to the rear axle} \\
+\delta &: \text{front wheel steering angle} \\
+F_{yf} &: \text{front tire lateral force} \\
+F_{yr} &: \text{rear tire lateral force} \\
+F_{xr} &: \text{rear tire longitudinal force} \\
+m &: \text{vehicle mass} \\
+v_x &: \text{longitudinal velocity in body-fixed frame} \\
+v_y &: \text{lateral velocity in body-fixed frame} \\
+r &: \text{yaw rate} 
+\end{align*}
+
+where $v_x = V \cos\beta$ and $v_y = V \sin\beta$ are the longitudinal and lateral velocities in the body frame.
+
+The rear wheel rotational dynamics are modeled as:
+\begin{equation}
+I_w \dot{\omega}_r = T_\omega - R_w F_{xr}
+\end{equation}
+
+where $I_\omega$, $\omega_r$, $R_\omega$ are moment of inertial of the rear wheel, derivative of rear wheel speed, and rear wheel radius, respectively. 
+
+This captures the coupling between applied torque and longitudinal force generation.
+
+The resulting model captures:
+\begin{itemize}
+    \item Nonlinear tire behavior through the Fiala model
+    \item Coupled longitudinal and lateral dynamics
+    \item Yaw dynamics due to tire force imbalance
+    \item Wheel dynamics affecting traction
+\end{itemize}
+
+Note that have neglected the effects due to braking and load transfer. The torque modeling which is important for control is explained in Sec \ref{sec_eng_torque}. This level of fidelity provides a balance between physical accuracy and computational efficiency, making it suitable for real-time MPC-based trajectory tracking.
+
+\subsection{Tire modeling}
+
+\subsubsection{Data collection}
+
+Data was collected by altering the speed in the range of 5 - 25 $m/s$ and changing the steering angle from 
+
+\begin{align*}
+    A &= 0.7*(50 + T_{end} - t)/T_{end} \\
+    \delta_{steer} &= A \sin(2\pi*t/(T_end/15)).
+\end{align*}
+
+Note that the amplitude was reduced for higher speeds to avoid excessive drift.
+
+The data collected included a maximum front lateral slip angle of 0.3 rad, a maximum rear lateral slip angle of 0.1 rad, and a maximum slip ratio of 0.6. A mask was applied to so that the masked data was in the preferred linear operating regime.
+
+\begin{itemize}
+    \item Filter longitudinal velocity $>$ 10 m/s -: Remove the outliers in the slow speed region.
+    \item Longitudinal acceleration $<$ 0.5 $m/s^2$ -: Avoid spikes in Normal estimate 
+    \item Braking $<$ 0.001-: Remove any braking effect for pure slip
+	\item Low slip regime $|\alpha_f |<0.065$,$|\alpha_r |<0.04$ -: Capture the linear regime
+	\item High slip regime $|\alpha_f |\geq0.034$, $|\alpha_r |\geq0.045$ -: Capture the saturating regime
+	\item Combined slip regime $|\alpha_r |\leq 0.2 $-: Capture the regime that affects both lateral and longitudinal forces
+\end{itemize}
+
+
+A $savgol filter$ was used to filter the acceleration spikes in $X$ direction. Furthermore, the measured acceleration was passes through a low pass filter with a cutoff frequency of 5, 10 in x and y directions with a filter order of 4. Then, the acceleration was computed using the kinematic relationships in computed ($\dot{v}_x$) and ($\dot{v}_y$). 
+
+\subsubsection{Computing tire model parameters}
+
+The simple tire dynamics of the bicycle model is defined by,
+
+\begin{align}
+I_{zz}\dot{r} &= a\cos\delta \, F_{yf} - b\,F_{yr}, \\
+m(\dot{v}_x - v_y r) &= -\sin\delta \, F_{yf} + F_{xr}, \\
+m(\dot{v}_y + v_x r) &= \cos\delta \, F_{yf} + F_{yr}.
+\end{align}
+
+
+
+Then, constructing 
+
+\begin{align}
+\mathbf{b} &=
+\begin{bmatrix}
+I_{zz}\,\dot{r} \\
+m\left(\dot{v}_x - v_y r\right) \\
+m\left(\dot{v}_y + v_x r\right)
+\end{bmatrix}, \\[8pt]
+\mathbf{A} &=
+\begin{bmatrix}
+a\cos\delta & 0 & -b \\
+-\sin\delta & 1 & 0 \\
+\cos\delta & 0 & 1
+\end{bmatrix}, \\[8pt]
+\hat{\mathbf{F}} &=
+\begin{bmatrix}
+\hat{F}_{yf} \\
+\hat{F}_{xr} \\
+\hat{F}_{yr}
+\end{bmatrix}
+= \mathbf{A}^{\dagger}\mathbf{b},
+\end{align}
+
+we solve for the forces. The computed forces are shown in Fig. \ref{fig:Tire_forces}. 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Figures/scatter_F_vs_slip_all_slip.png}
+    \caption{Estimated lateral forces vs the slip angle. Pink: Front wheel force,  Cyan: Rear wheel force}
+    \label{fig:Tire_forces}
+\end{figure}
+
+Note that the rear tires have a higher cornering stiffness compared to the front tires as rear is loaded more than the front under acceleration in $X$ direction. 
+
+Next, the Fiala model was fitted to this data to compute the friction coefficient and the cornering stiffness as shown in Fig. \ref{fig:Fiala_fit}. 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Figures/FialaFit_pure.png}
+    \caption{Fiala pure slip model fitted to the estimated tire forces}
+    \label{fig:Fiala_fit}
+\end{figure}
+
+Then, the combined-slip Fiala model was utilized to compute the friction coefficient and the cornering stiffness of the rear tire as shown in Fig. \ref{fig:Fiala_comb}.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\linewidth]{Figures/FialaFit_combined.png}
+    \caption{Fiala combined slip model fitted to the total estimated tire force}
+    \label{fig:Fiala_comb}
+\end{figure}
+
+The Fiala model parameters are summarized in Table \ref{tab:Fiala_param}.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|}
+\hline
+Parameter & Value \\
+\hline
+Front pure slip cornering stiffness & 118308.36 (N/rad) \\
+\hline
+Front pure slip friction coefficient & 1.024 \\
+\hline
+Rear combined cornering stiffness & 155693.01 (N/rad)  \\
+\hline
+Rear combined slip friction coefficient & 0.8731 \\
+\hline
+\end{tabular}
+\caption{Fiala tire model parameters}
+\label{tab:Fiala_param}
+\end{table}
+
+
+
+\subsection{Engine Torque Modeling}
+Given a commanded throttle $thr$ at the current engine speed and wheel speed, one needs to reliably be able to predict how much torque will reach the rear wheels. The torque can be modeled as the following:
+
+\[
+T_w = f(thr,\, \omega,\, \dot{\theta}_e,\, p_b)
+\quad [\si{Nm}]
+\]
+
+where $thr \in [0,1]$, $\omega$ is rear wheel angular velocity
+(\si{rad/s}), $\dot{\theta}_e$ is engine speed (\si{rad/s}), and $p_b$ is
+boost pressure (\si{bar}).
+
+The inverse of this function is also valuable in that it provides a throttle command for when a specific torque is desired. Torque appears in our equations of motion but throttle is what is actually being controlled. 
+
+The inverse map $thr^* = f^{-1}(T_w^*,\, \omega,\, \dot{\theta}_e,\, p_b)$
+is obtained by solving the rootfinding problem
+\[
+f(thr,\, \omega,\, \dot{\theta}_e,\, p_b) - T_w^* = 0
+\]
+via a Newton iteration (CasADi \texttt{rootfinder}) with five initial guesses
+$thr_0 \in \{0.1,\, 0.3,\, 0.5,\, 0.7,\, 0.9\}$, selecting the solution
+with smallest residual. The result is clamped to $thr^* \in [0, 1]$.
+
+\subsubsection{Data collection}
+Three strategies were used for data collection, grid sweep, free-run ramp, and random excitation. 
+
+The grid sweep is the most systematic as it starts with a target speed and achieves it with a proportional controller, then steps through a predefined list of throttle commands. This approach assists with gathering data at specific operating points
+
+The free-run ramp starts from zero velocity and applies a fixed throttle; this is repeated for a set of throttle commands. This approach helps to collect transient torque behavior.
+
+Finally, random excitation draws a random throttle value and holds it for a predefined amount of time. This is repeated until the simulation ends. This approach assists with improving the correlation between throttle and speed.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth, trim={5mm 0 0 2cm}, clip]{Torque_data.png}
+    \caption{Statistics from BeamNG Data Collection}
+    \label{fig:placeholder}
+\end{figure}
+
+Data was collected from a large distribution of gears, torques, velocities, throttles, and engine speeds.
+
+\subsubsection{Engine Torque Model fitting}
+
+The forward and inverse torque models are neural networks. Both networks are trained with Adam optimizer, a learning rate scheduler that halves the rate when validation loss plateaus, and early stopping based on validation loss.  The data set is split 80/20 into training and validation sets. The Adam optimizer is used with an initial learning rate of 0.001.
+
+TorqueNet is a 5-input, 6-hidden-unit, tanh network that learns the mapping from $thr,\, \omega,\, \dot{\theta}_e,\, p_b$
+
+InvThrottleNet is a 4-input, 4-hidden-unit, ReLU network with a sigmoid output that learns the mapping from $T_w^*,\, \omega,\, \dot{\theta}_e,\, p_b$. 
+The inverse model shares the same coefficient set as the forward model.
+
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.75\linewidth]{NN_parity.png}
+    \caption{Parity Between the Neural Networks and the BeamNG Simulation}
+    \label{fig:placeholder}
+\end{figure}
+
+In general, the Data-driven models estimate the torque and throttle with a relatively high parity.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\linewidth]{NN_validation.png}
+    \caption{Comparison Between the Neural Networks and the BeamNG Simulation over time}
+    \label{fig:placeholder}
+\end{figure}
+
+The models can predict the general trends of torque and throttle, but they do not simulate large changes in a timely manner.
+
+The forward torque model is a degree-3 polynomial:
+\[
+T_w = c_0 + \sum_{i} c_i \cdot m_i(thr,\, \omega,\, \dot{\theta}_e,\, p_b)
+\quad [\si{Nm}]
+\]
+
+\begin{table}[h!]
+\centering
+\caption{Forward torque map coefficients ($T_w$, degree 3).}
+\label{tab:torque_map_coefficients}
+\begin{tabular}{clS[table-format=+5.6e+2]}
+\toprule
+\textbf{Index} & \textbf{Monomial term} & {\textbf{Coefficient}} \\
+\midrule
+0  & $1$ (intercept)                           & -341.151025 \\
+\midrule
+\multicolumn{3}{l}{\textit{Degree 1}} \\
+1  & $thr$                                  & 4269.025212 \\
+2  & $\omega$                                  & 51.710759 \\
+3  & $\dot{\theta}_e$                          & -0.937490 \\
+4  & $p_b$                                     & 0.0 \\
+\midrule
+\multicolumn{3}{l}{\textit{Degree 2}} \\
+5  & $\omega^2$                                & -13028.283780 \\
+6  & $thr\,\dot{\theta}_e$                  & 4.110925 \\
+7  & $thr\,\omega$  \textsuperscript{†}     & 26.250819 \\
+8  & $thr\,p_b$                             & 0.0 \\
+9  & $thr^2$                                & 0.014384 \\
+10 & $\omega\,\dot{\theta}_e$                  & -0.315358 \\
+11 & $\omega\,p_b$                             & 0.0 \\
+12 & $\dot{\theta}_e^2$                        & 0.023609 \\
+13 & $\dot{\theta}_e\,p_b$                     & 0.0 \\
+14 & $p_b^2$                                   & 0.0 \\
+\midrule
+\multicolumn{3}{l}{\textit{Degree 3}} \\
+15 & $\omega^3$                                & 8490.026048 \\
+16 & $thr\,\omega^2$  \textsuperscript{†}   & -2.625855 \\
+17 & $thr^2\,\omega$                        & -19.456741 \\
+18 & $thr^2\,p_b$                           & 0.0 \\
+19 & $thr\,\omega\,\dot{\theta}_e$          & -0.464712 \\
+20 & $thr\,\omega\,p_b$                     & 0.161516 \\
+21 & $thr\,\dot{\theta}_e\,p_b$             & 0.0 \\
+22 & $thr\,\dot{\theta}_e^2$               & -0.006607 \\
+23 & $thr\,\dot{\theta}_e\,p_b$             & 0.0 \\
+24 & $thr\,p_b^2$                           & 0.0 \\
+25 & $\omega^2\,\dot{\theta}_e$                & 0.001915 \\
+26 & $\omega^2\,p_b$                           & -0.000408 \\
+27 & $\omega\,\dot{\theta}_e\,p_b$             & 0.0 \\
+28 & $\omega\,\dot{\theta}_e^2$               & 0.000241 \\
+29 & $\omega\,\dot{\theta}_e\,p_b$             & 0.0 \\
+30 & $\omega\,p_b^2$                           & 0.0 \\
+31 & $\dot{\theta}_e^3$                        & -0.000027 \\
+32 & $\dot{\theta}_e^2\,p_b$                   & 0.0 \\
+33 & $\dot{\theta}_e\,p_b^2$                   & 0.0 \\
+34 & $p_b^3$                                   & 0.0 \\
+\bottomrule
+\end{tabular}
+\\[6pt]
+\footnotesize
+\end{table}
+
+\newpage
+\section{Model Validation}
+After constructing the tire model and the torque model, we constructed a model, termed \textit{optimization model}, which is used in the optimization routine (in the MPC). Before the MPC was used for control, we validated the optimization model. 
+
+We collected state and control inputs in the beamNG simulation environment. The states included, position $X$, position $Y$, yaw $\psi$, velocity $V$, side slip $\beta$, and rear wheel speed $w_r$, and the controls included steering angle $\delta$, and rear wheel torque $\tau_r$. Then, the initial state and initial control input were used to initialize the optimization model. Next, the model was integrated forward in time using Runge-Kutta 4. Figure \ref{Fig_Validation} illustrates the evolution of the simulated and the ground truth trajectories for two different paths. Note that the ground truth corresponds to the beamNG trajectory, and the simulation corresponds to the trajectory obtained by integrating the optimization model forward in time. 
+
+As shown in Fig. \ref{Val_s}, the simulated trajectory correlate well with the ground truth data. However, when navigating an oval path, the correlation breaks as shown in Fig. \ref{Val_o}. This is mainly due to the generation of the non-zero-slip.
+\begin{figure*}[h!]
+  \centering
+  \subfloat[\centering Evolution of the ground truth and the simulated trajectories for straight line path]
+{\includegraphics[width=0.49\textwidth]{Figures/Validation_straight.png}\label{Val_s}}
+  \hfill 
+  \subfloat[\centering Evolution of the ground truth and the simulated trajectories for oval path]{\includegraphics[width=0.5\textwidth]{Figures/Validation_oval_1.png}\label{Val_o}}
+  \caption{\centering Ground truth and simulated trajectories} 
+\label{Fig_Validation}
+\end{figure*}
+
+The zoomed-in plot given in Fig.  \ref{fig:val_zoomed} suggests that the simulated trajectory correlate well in the first few seconds of the run. This is because as the simulated trajectory deviates from the ground truth due to model mismatch, there does not exists a feedback mechanism to account for the mismatch.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.6\linewidth]{Figures/Validation_oval_zoomedin.png}
+    \caption{Zoomed-in plot for the evolution of the ground truth and the simulated trajectories for oval path}
+    \label{fig:val_zoomed}
+\end{figure}
+
+
+
+
+
+
+
+\section{Trajectory Generation}
+
+In this study, we generated time-optimal race line trajectories for track racing. We generated the reference trajectory for two cases: 1) mild and 2) aggressive. 
+% \red{fill in the description for the traj generation. It can be found in the Week 10 class notes/GitHub. MILD and AGGRESSIVE are the same as the ones defined in the code. Try to be more descriptive.}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.6\linewidth]{Figures/Referenc_mild_vel_20.png}
+    \caption{Evolution of the desired XY position in track, velocity, road wheel angle, and rear wheel speed for ``mild'' level}
+    \label{fig:val_zoomed}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.6\linewidth]{Figures/Referenc_agg_vel_20.png}
+    \caption{Evolution of the desired XY position in track, velocity, road wheel angle, and rear wheel speed for ``aggressive'' level}
+    \label{fig:val_zoomed}
+\end{figure}
+
+The mild case instructs the vehicle to go slower, accelerate and decelerate slower, and create fewer points of calculation/correction than the aggressive case. This is illustrated best by the discrepancy between the road-wheel angles and desired wheel speeds of the two cases. The mild and aggressive cases follow nearly identical curve shapes in their desired road-wheel angles, but the aggressive case peaks 0.05 radians higher, has a higher jerk at its peaks, and has a valley around 0.01 radians higher than the mild case. The mild and aggressive cases have very similar peak wheel velocities, but the mild case, with its fewer corrections, is much more consistent in its acceleration upwards, while the aggressive case has a series of drops and increases in wheel speeds over the course of its path.
+
+
+
+\section{Tracking Controller Design}
+
+\subsection{Feedback control for wheel speed control}
+
+A proportional-integral feedback controller that matches the actual wheel speed to the desired wheel speed (constructed in the trajectory generation phase) is created. The gains $K_P = 0.5$ and $K_D = 1.0$ are tuned so that the wheel speed tracking has reasonably good tracking with minimal steady state error. The anti-windup method is used to avoid control saturation.
+
+\begin{align*}
+    throttle &= throttle_{ff} + throttle_{fb}\\
+    throttle_{fb} &= Kp * (wr_{error}) + Ki * \int wr_{error} d\tau
+\end{align*}
+
+where $throttle_{ff}$ is generated from the inverse torque map.
+
+\subsection{Model predictive control}
+
+A nonlinear Model Predictive Control (MPC) framework is used to track the reference trajectory generated in the previous section. The controller operates in the Frenet (path-relative) coordinate system and solves a finite-horizon optimal control problem at each time step.
+
+The MPC predicts the future evolution of the vehicle over a fixed spatial horizon and computes optimal control inputs that minimize tracking error while respecting vehicle and actuator constraints.
+
+The system state is defined in the Frenet frame as:
+\begin{equation}
+\mathbf{x} =
+\begin{bmatrix}
+t & r & V & \beta & \omega_r & e & \Delta \phi
+\end{bmatrix}^T
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $t$ : time
+    \item $r$ : yaw rate
+    \item $V$ : vehicle speed
+    \item $\beta$ : sideslip angle
+    \item $\omega_r$ : rear wheel speed
+    \item $e$ : lateral deviation from reference path
+    \item $\Delta \phi$ : heading error relative to path
+\end{itemize}
+
+The control inputs are:
+\begin{equation}
+\mathbf{u} =
+\begin{bmatrix}
+\delta & T_r
+\end{bmatrix}^T
+\end{equation}
+where $\delta$ is the road wheel angle and $T_r$ is the rear wheel torque.
+
+Instead of time-based dynamics, the system is formulated in the spatial domain using arc-length $s$ as the independent variable. Using the chain rule:
+
+\begin{equation}
+\frac{d\mathbf{x}}{ds} = \frac{1}{\dot{s}} \frac{d\mathbf{x}}{dt}
+\end{equation}
+
+The longitudinal progression along the path is:
+\begin{equation}
+\dot{s} = \frac{V \cos(\Delta \phi)}{1 - e \kappa(s)}
+\end{equation}
+
+where $\kappa(s)$ is the path curvature.
+
+The Frenet dynamics are given by:
+\begin{align}
+\frac{dt}{ds} &= \frac{1}{\dot{s}} \\
+\frac{dr}{ds} &= \frac{\dot{r}}{\dot{s}} \\
+\frac{dV}{ds} &= \frac{\dot{V}}{\dot{s}} \\
+\frac{d\beta}{ds} &= \frac{\dot{\beta}}{\dot{s}} \\
+\frac{d\omega_r}{ds} &= \frac{\dot{\omega}_r}{\dot{s}} \\
+\frac{de}{ds} &= \frac{V \sin(\Delta \phi)}{\dot{s}} \\
+\frac{d(\Delta \phi)}{ds} &= \frac{\dot{\beta} + r - \kappa(s)\dot{s}}{\dot{s}}
+\end{align}
+
+The time-domain derivatives $\dot{r}, \dot{V}, \dot{\beta}, \dot{\omega}_r$ are obtained from the Fiala bicycle model.
+
+The system is discretized over a fixed spatial grid:
+\begin{equation}
+s_k = s_0 + k \cdot \Delta s
+\end{equation}
+
+An implicit Euler scheme is used:
+\begin{equation}
+\mathbf{x}_{k+1} = \mathbf{x}_k + \Delta s \cdot f(\mathbf{x}_{k+1}, \mathbf{u}_k, \kappa_{k+1})
+\end{equation}
+
+This improves numerical stability for stiff nonlinear dynamics.
+
+\subsubsection*{Optimization Problem}
+
+At each control step, the MPC solves:
+
+\begin{align}
+\min_{\mathbf{x}, \mathbf{u}} \quad &
+\sum_{k=0}^{N-1} \left[
+w_V (V_k - V_k^{ref})^2
++ w_e (e_k - e_k^{ref})^2
++ w_{\Delta\phi} (\Delta\phi_k - \Delta\phi_k^{ref})^2
+\right. \nonumber \\
+& \left.
++ w_u \|\mathbf{u}_k - \mathbf{u}_k^{ref}\|^2
++ w_{\Delta u} \|\mathbf{u}_k - \mathbf{u}_{k-1}\|^2
+\right]
+\end{align}
+
+with terminal cost:
+\begin{equation}
+w_e^f e_N^2 + w_{\Delta\phi}^f (\Delta\phi_N)^2
+\end{equation}
+
+The optimization is subject to:
+
+\begin{equation}
+\mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k)
+\end{equation}
+
+\begin{align}
+V_{\min} \leq V_k \leq V_{\max} \\
+e_{\min}(s_k) \leq e_k \leq e_{\max}(s_k)
+\end{align}
+
+\begin{align}
+\delta_{\min} \leq \delta_k \leq \delta_{\max} \\
+T_{\min} \leq T_k \leq T_{\max}
+\end{align}
+
+\begin{equation}
+\|\mathbf{u}_k - \mathbf{u}_{k-1}\| \leq \Delta u_{\max}
+\end{equation}
+
+In order to tune the controller, we adjusted the weights associated with the objective function. The initial weights are set to the ones in Fig \ref{fig:MPC_weights}. 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.4\linewidth]{Figures/MPC_weights.png}
+    \caption{Initial weights of the MPC controller}
+    \label{fig:MPC_weights}
+\end{figure}
+
+
+\section{Results and Analysis}
+
+First, we analyze the tracking performance when the ``mild'' trajectory is used as shown in Fig. \ref{fig:Tracking_mild}. In this scenario, the vehicle maintains a fairly accurate following of the desired path, only seeing major deviations near the beginning, where it curves in the opposite direction than desired, and the bottom-right section of the track, where it shows a consistent overshoot of the desired path. The majority of commands remain consistent with the expected commands, with the exceptions being some overshoots in the steering command at $s=150m$ and $[250,325]m$, and a major undershoot in the rear torque command at ~$s=275m$. $e(m)$ maximizes near the beginning of the track, and then almost always having a minor negative lateral error (an undershoot) for the rest of the track.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{Figures/Referenc_mild_vel_20_2.png}
+    \caption{Comparison of reference and actual states-inputs for ``mild'' level}
+    \label{fig:Tracking_mild}
+\end{figure}
+
+Figure \ref{fig:Tracking_agg} illustrates the performance of the tracking controller under ``aggressive'' level. It is worth noting that there is a maximum lateral error of 0.7m.  The heading error is very inconsistent, with a maximum value of ~0.08, even after the expected error from initialization. The steering command consistently overshoots to a point of unreliability, at some points reaching double what the expected steering command ($s=90m,180m$). The slip angle and its rate of change almost never aligns with their expected values. The rear torque command also is inconsistent with expected results, undershooting significantly until about $s=100$, then overshooting for the rest of the track.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{Figures/Tracking_agg_vel_20_h_20.png}
+    \caption{Comparison of reference and actual states-inputs for ``aggressive'' level}
+    \label{fig:Tracking_agg}
+\end{figure}
+
+Then, to improve performance, the weights of the steering, torque, and their rates were reduced by half. This allows more frequent changes of the input, which allows the controller to react to the dynamically changing environment. As shown in Fig. \ref{fig:Tracking_agg_2}, we observe better lateral error, tracking speed, and rear wheel speed. We observe a higher solving time. The reduced weights aggressive level led to 1 major solve time spike compared to three spikes in the base aggressive level. The speed along the straight sections from both s=[0,50] and s=[200,250] is closer with reduced weights. The rear wheel speed is also closer, although with increased noise from s=[0,50].  
+
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1\linewidth]{Figures/Tracking_agg_vel_20_h_20_relaxed_inputs_2.png}
+    \caption{Comparison of reference and actual states-inputs for ``aggressive'' level with reduced weights on input and input rates}
+    \label{fig:Tracking_agg_2}
+\end{figure}
+
+
+\vspace{10cm}
+\newpage
+\section{Conclusion}
+
+Major conclusions are,
+
+\begin{itemize}
+    \item The tire model representation is accurate and can be used to design an MPC controller. However, as trajectories are made aggressive, the vehicle fail to follow the desired slip. This can be mitigated by a more accurate tire model, potentially a Pacejka model. Furthermore, we can improve the vehicle dynamic model to include load transfer.
+    \item The torque model and inverse torque model was accurate to be used in the MPC controller. However, as shown in Fig. \ref{fig:Tracking_mild}, \ref{fig:Tracking_agg} and \ref{fig:Tracking_agg_2}, the torque does not follow the desired torque. The desired torque trajectory can be further improved by collecting more data in different driving conditions such as step inputs, gear-specific sweeps, and high slip scenarios.Furthermore, having balance dataset across low/high speed, low/high torque, different gears can improve the performance.
+    \item Our modeling approach allows us to create a trackable optimization problem that can be solved on a millisecond time scale. Increasing the fidelity of the model increases the solving time. This can result in a suboptimal controller because the controller update rate decreases, which degrades the performance. Therefore, a study that evaluates the model fidelity/ accuracy with the solving time needs to be conducted to derive a model and a controller that caters to different driving scenarios.
+\end{itemize}
+
+\section{Code}
+    
+
+\end{document}
