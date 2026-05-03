@@ -1,8 +1,5 @@
 cd /home/ros2_ws
 
-if [ ! -d ".venv" ]; then 
-    python3 -m venv .venv
-fi
 
 mkdir -p lib
 cd lib
@@ -26,3 +23,12 @@ git pull -f
 echo "source /home/ros2_ws/install/setup.bash" >> ~/.bashrc
 
 cd /home/ros2_ws
+
+if [ ! -d ".venv" ]; then 
+    python3 -m venv .venv
+fi
+
+. .venv/bin/activate
+echo "source /home/ros2_ws/.venv/bin/activate" >> ~/.bashrc
+pip install -r requirements.txt
+

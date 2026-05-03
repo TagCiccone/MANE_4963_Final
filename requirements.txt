@@ -12,9 +12,6 @@ ament-package==0.16.5
 ament-pep257==0.17.5
 ament-uncrustify==0.17.5
 ament-xmllint==0.17.5
-bng-controller==0.3.0
-bng-msgs==0.2.0
-bng-simulator==0.3.0
 builtin-interfaces==2.0.3
 casadi==3.7.2
 composition-interfaces==2.0.3
