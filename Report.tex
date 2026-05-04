@@ -7,6 +7,7 @@
 \usepackage{booktabs}
 \usepackage{siunitx}
 \usepackage{geometry}
+\usepackage{hyperref}
 
 \newcommand{\red}[1]{{\color{red}#1}}
 
@@ -19,14 +20,16 @@
 \maketitle
 
 \section{Introduction}
-Autonomous vehicles need complex algorithms in order to navigate the environment safely and efficiently. Candidates for prospective algorithms need to be able to predict where the vehicle may be given specific control inputs (steering angle and throttle in this case), generate a trajectory that the vehicle can reasonably follow, and produce control inputs such that the vehicle can stay on the generated trajectory within a certain bound.
+Autonomous vehicles represent one of the most complex challenges in modern robotics and control systems engineering. Operating safely and efficiently in dynamic, real-world environments, they require sophisticated algorithms capable of perceiving the surrounding world, reasoning about future states, and executing precise control actions all in real time. Candidates for prospective algorithms need to be able to predict where the vehicle may be given specific control inputs (steering angle and throttle in this case), generate a trajectory that the vehicle can reasonably follow, and produce control inputs such that the vehicle can stay on the generated trajectory within a certain bound.
 
-One method used to control a vehicle is Model Predictive Control (MPC). MPC uses a model for the vehicle as well as user-defined constraints to find the optimal control inputs for a given prediction horizon. High performance is easily achievable with a well-founded model and constraints.
+One method used to control a vehicle is Model Predictive Control (MPC). MPC uses a model and user-defined constraints to find the optimal control inputs for a given prediction horizon. Using a dynamic vehicle model, it predicts the future trajectory that would result from a sequence of possible control inputs, and then selects the sequence that minimizes a user-defined cost function. Only the first input in the sequence is applied, and then the process is repeated. This allows the controller to predict the future while remaining responsive; making it effective at maintaining high performance while staying safe.
 
-This project explores the use of models (both data-driven and analytical) for prediction and trajectory generation, as well as MPC for control. 
+The quality of the controller is tied to the accuracy of the dynamic model. This project will use both data-driven models which attempt to learn the vehicle's behavior from collected data, and analytical models which are derived from physics, such as the kinematic bicycle model. Both are used in order to maintain sufficient fidelity for smooth trajectory tracking control.
+
+This project explores the use of models for vehicle state prediction and trajectory generation, as well as their effectiveness as components within an MPC framework for trajectory tracking control. The analysis will assess the influence of modeling techniques on controller performance.
 
 \section{Vehicle Selection}
-An internal combustion engine (ICE) vehicle with rear wheel drive, either manual or sequential transmission, and with a low center of gravity was needed to match the project's modeling assumptions
+An internal combustion engine (ICE) vehicle with rear wheel drive, manual or sequential transmission, and low center of gravity was needed to match the project's modeling assumptions
 
 Vehicle Choice: Civetta Scintilla Race with Sequential Drive
  
@@ -594,6 +597,6 @@ Major conclusions are,
 \end{itemize}
 
 \section{Code}
-    
+    \url{https://github.com/TagCiccone/MANE_4963_Final}
 
 \end{document}
